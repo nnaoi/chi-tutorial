@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  api: 
+    build:
+      context: .
+      dockerfile: ./etc/docker/api/Dockerfile
+    volumes:
+      - ./api:/go/src/app
+    ports:
+      - 3333:3333
