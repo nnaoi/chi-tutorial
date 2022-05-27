@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	_ "github.com/jackc/pgx/v4/stdlib"
-	"github.com/joho/godotenv"
 )
 
 type Book struct {
@@ -66,11 +65,6 @@ func mustConnect() *sql.DB {
 }
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		fmt.Println(err)
-	}
-
 	db := getDB()
 	defer db.Close()
 
