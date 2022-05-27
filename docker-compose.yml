@@ -3,18 +3,15 @@ services:
   db:
     image: postgres:14.2-alpine
     env_file:
-      - ./api/.env
+      - .env
     ports:
       - 5432:5432
     volumes:
       - postgres:/var/lib/postgresql/data
-      - ./etc/docker/api/init:/docker-entrypoint-initdb.d
+      - ./db/init:/docker-entrypoint-initdb.d
   api: 
     build:
       context: .
-      dockerfile: ./etc/docker/api/Dockerfile
-    volumes:
-      - ./api:/go/src/app
     ports:
       - 8080:8080
     depends_on:
