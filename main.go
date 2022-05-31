@@ -190,7 +190,7 @@ func DeleteBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	books, err := models.Books().All(context.Background(), db)
+	books, err := models.Books(qm.OrderBy("id")).All(context.Background(), db)
 	if err != nil {
 		fmt.Println(err)
 		return
