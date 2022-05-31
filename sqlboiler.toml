@@ -1,0 +1,12 @@
+wipe     = true
+no-tests = true
+add-enum-types = true
+
+[psql]
+  dbname = "postgres"
+  host   = "localhost"
+  port   = 5432
+  user   = "postgres"
+  pass   = "password"
+  sslmode = "disable"
+  whitelist=["books"]

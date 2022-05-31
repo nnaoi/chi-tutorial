@@ -10,8 +10,7 @@ services:
       - postgres:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d
   api: 
-    build:
-      context: .
+    build: .
     ports:
       - 8080:8080
     depends_on:

@@ -1,17 +1,24 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/volatiletech/sqlboiler/v4/boil"
+	"github.com/volatiletech/sqlboiler/v4/queries/qm"
+
+	models "chi-tutorial/models"
 )
 
 type Book struct {
@@ -19,9 +26,12 @@ type Book struct {
 	Name string `db:"name" json:"name"`
 }
 
+type key string
+
 var (
-	db   *sql.DB
-	once sync.Once
+	db      *sql.DB
+	once    sync.Once
+	bookKey key = "book"
 )
 
 // getDB lazily instantiates a database connection pool. Users of Cloud Run or
@@ -74,29 +84,117 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(render.SetContentType(render.ContentTypeJSON))
 
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query("SELECT * FROM books")
+	r.Route("/books", func(r chi.Router) {
+		r.Get("/", ListBooks)
+		r.Post("/", CreateBook)
 
+		r.Route("/{bookID}", func(r chi.Router) {
+			r.Use(BookCtx)
+			r.Get("/", GetBook)
+			r.Put("/", UpdateBook)
+			r.Delete("/", DeleteBook)
+		})
+	})
+
+	http.ListenAndServe(":8080", r)
+}
+
+func ListBooks(w http.ResponseWriter, r *http.Request) {
+	books, err := models.Books(qm.OrderBy("id")).All(context.Background(), db)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	render.JSON(w, r, books)
+}
+
+func CreateBook(w http.ResponseWriter, r *http.Request) {
+	book := &models.Book{}
+	json.NewDecoder(r.Body).Decode(&book)
+	err := book.Insert(context.Background(), db, boil.Infer())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	render.JSON(w, r, book)
+}
+
+// BookCtx middleware is used to load an book object from
+// the URL parameters passed through as the request. In case
+// the Book could not be found, we stop here and return a 404.
+func BookCtx(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		var err error
+		bookID := chi.URLParam(r, "bookID")
+		if bookID == "" {
+			fmt.Println("bookID empty")
+			return
+		}
+
+		intBookID, err := strconv.Atoi(bookID)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 
-		var books []Book
-		for rows.Next() {
-			var book Book
-			err := rows.Scan(&book.ID, &book.Name)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-
-			books = append(books, book)
-
+		book, err := models.FindBook(context.Background(), db, intBookID)
+		if err != nil {
+			fmt.Println(err)
+			return
 		}
 
-		render.JSON(w, r, books)
+		ctx := context.WithValue(r.Context(), bookKey, book)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
 
-	http.ListenAndServe(":8080", r)
+// GetBook returns the specific Book. You'll notice it just
+// fetches the Book right off the context, as its understood that
+// if we made it this far, the Book must be on the context. In case
+// its not due to a bug, then it will panic, and our Recoverer will save us.
+func GetBook(w http.ResponseWriter, r *http.Request) {
+	// Assume if we've reach this far, we can access the article
+	// context because this handler is a child of the BookCtx
+	// middleware. The worst case, the recoverer middleware will save us.
+	book := r.Context().Value(bookKey).(*models.Book)
+	render.JSON(w, r, book)
+}
+
+// UpdateBook updates an existing Book in our persistent store.
+func UpdateBook(w http.ResponseWriter, r *http.Request) {
+	book := r.Context().Value(bookKey).(*models.Book)
+	err := json.NewDecoder(r.Body).Decode(&book)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	_, err = book.Update(context.Background(), db, boil.Infer())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	render.JSON(w, r, book)
+}
+
+// DeleteBook removes an existing Book from our persistent store.
+func DeleteBook(w http.ResponseWriter, r *http.Request) {
+	book := r.Context().Value(bookKey).(*models.Book)
+	_, err := book.Delete(context.Background(), db)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	books, err := models.Books().All(context.Background(), db)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	render.JSON(w, r, books)
 }
